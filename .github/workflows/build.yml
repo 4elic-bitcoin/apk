@@ -4,43 +4,58 @@ on:
   push:
     branches: [ main, master ]
   pull_request:
-    branches: [ main, master ]
   workflow_dispatch:
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-
+  build-apk:
+    runs-on: ubuntu-22.04  # Используем 22.04 вместо 24.04
+    
     steps:
-    - name: Checkout code
+    - name: Checkout repository
       uses: actions/checkout@v4
 
-    - name: Set up Python
+    - name: Setup Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.9'
 
-    - name: Setup Java JDK
+    - name: Setup Java
       uses: actions/setup-java@v4
       with:
         distribution: 'temurin'
         java-version: '17'
 
-    - name: Install system dependencies
+    - name: Install Ubuntu dependencies
       run: |
         sudo apt-get update
         sudo apt-get install -y \
-          git zip unzip wget \
-          autoconf libtool pkg-config \
-          zlib1g-dev libncurses5-dev libncursesw5-dev \
-          libtinfo5 cmake libffi-dev libssl-dev \
-          build-essential libltdl-dev ccache \
-          libgstreamer1.0-dev gstreamer1.0-plugins-base \
-          gstreamer1.0-plugins-good
+          build-essential \
+          git \
+          ffmpeg \
+          libsdl2-dev \
+          libsdl2-image-dev \
+          libsdl2-mixer-dev \
+          libsdl2-ttf-dev \
+          libportmidi-dev \
+          libswscale-dev \
+          libavformat-dev \
+          libavcodec-dev \
+          zlib1g-dev \
+          libgstreamer1.0-0 \
+          gstreamer1.0-plugins-base \
+          gstreamer1.0-plugins-good \
+          autoconf \
+          automake \
+          libtool \
+          pkg-config \
+          libffi-dev \
+          libssl-dev \
+          libncurses5-dev
 
-    - name: Install Python dependencies
+    - name: Install Buildozer
       run: |
-        python -m pip install --upgrade pip wheel setuptools
+        python -m pip install --upgrade pip
+        pip install --upgrade wheel setuptools
         pip install buildozer cython==0.29.33
 
     - name: Cache Buildozer directories
@@ -53,23 +68,13 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-buildozer-
 
-    - name: Make buildozer executable
-      run: chmod +x $(which buildozer) || true
-
     - name: Build APK
-      run: |
-        yes | buildozer android debug
-      env:
-        ANDROID_SDK_ROOT: ~/.buildozer/android/platform/android-sdk
-        ANDROID_NDK_ROOT: ~/.buildozer/android/platform/android-ndk
-
-    - name: List build directory
-      run: ls -la bin/
+      run: buildozer android debug
+      timeout-minutes: 90
 
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
-        name: tetris-debug-${{ github.sha }}
+        name: tetris-apk
         path: bin/*.apk
         if-no-files-found: error
-        retention-days: 30
