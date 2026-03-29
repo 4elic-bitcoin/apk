@@ -4,103 +4,72 @@ on:
   push:
     branches: [ main, master ]
   pull_request:
+    branches: [ main, master ]
   workflow_dispatch:
 
 jobs:
-  build-apk:
-    runs-on: ubuntu-22.04
-    
+  build:
+    runs-on: ubuntu-latest
+
     steps:
-    - name: Checkout repository
+    - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Setup Python
+    - name: Set up Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.9'
-        cache: 'pip'
 
-    - name: Setup Java
+    - name: Setup Java JDK
       uses: actions/setup-java@v4
       with:
         distribution: 'temurin'
         java-version: '17'
-        cache: 'gradle'
 
-    - name: Install Ubuntu dependencies
+    - name: Install system dependencies
       run: |
         sudo apt-get update
         sudo apt-get install -y \
-          build-essential \
-          git \
-          ffmpeg \
-          libsdl2-dev \
-          libsdl2-image-dev \
-          libsdl2-mixer-dev \
-          libsdl2-ttf-dev \
-          libportmidi-dev \
-          libswscale-dev \
-          libavformat-dev \
-          libavcodec-dev \
-          zlib1g-dev \
-          libgstreamer1.0 \
-          gstreamer1.0-plugins-base \
-          gstreamer1.0-plugins-good \
-          autoconf \
-          libtool \
-          pkg-config \
-          libffi-dev \
-          libssl-dev
+          git zip unzip wget \
+          autoconf libtool pkg-config \
+          zlib1g-dev libncurses5-dev libncursesw5-dev \
+          libtinfo5 cmake libffi-dev libssl-dev \
+          build-essential libltdl-dev ccache \
+          libgstreamer1.0-dev gstreamer1.0-plugins-base \
+          gstreamer1.0-plugins-good
 
-    - name: Install Buildozer
+    - name: Install Python dependencies
       run: |
-        python -m pip install --upgrade pip
-        pip install --upgrade wheel setuptools virtualenv
+        python -m pip install --upgrade pip wheel setuptools
         pip install buildozer cython==0.29.33
 
-    - name: Cache Buildozer global directory
+    - name: Cache Buildozer directories
       uses: actions/cache@v4
       with:
-        path: ~/.buildozer
-        key: buildozer-global-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}
+        path: |
+          .buildozer
+          ~/.buildozer
+        key: ${{ runner.os }}-buildozer-${{ hashFiles('buildozer.spec') }}
+        restore-keys: |
+          ${{ runner.os }}-buildozer-
 
-    - name: Cache Buildozer build directory
-      uses: actions/cache@v4
-      with:
-        path: .buildozer
-        key: buildozer-build-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}
+    - name: Make buildozer executable
+      run: chmod +x $(which buildozer) || true
 
-    - name: Accept Android licenses
+    - name: Build APK
       run: |
-        mkdir -p ~/.android
-        echo "count=0" > ~/.android/repositories.cfg
+        yes | buildozer android debug
+      env:
+        ANDROID_SDK_ROOT: ~/.buildozer/android/platform/android-sdk
+        ANDROID_NDK_ROOT: ~/.buildozer/android/platform/android-ndk
 
-    - name: Build with Buildozer
-      run: |
-        buildozer --version
-        buildozer android debug || buildozer android debug
-      timeout-minutes: 120
-
-    - name: Find APK
-      id: find-apk
-      run: |
-        APK_PATH=$(find bin -name "*.apk" -type f | head -1)
-        echo "apk_path=$APK_PATH" >> $GITHUB_OUTPUT
-        echo "apk_name=$(basename $APK_PATH)" >> $GITHUB_OUTPUT
-        ls -lh "$APK_PATH"
+    - name: List build directory
+      run: ls -la bin/
 
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
-        name: tetris-android-${{ github.run_number }}
-        path: ${{ steps.find-apk.outputs.apk_path }}
+        name: tetris-debug-${{ github.sha }}
+        path: bin/*.apk
         if-no-files-found: error
-
-    - name: Create Release
-      if: startsWith(github.ref, 'refs/tags/')
-      uses: softprops/action-gh-release@v2
-      with:
-        files: ${{ steps.find-apk.outputs.apk_path }}
-        generate_release_notes: true
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        retention-days: 30
